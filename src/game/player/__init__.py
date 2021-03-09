@@ -197,8 +197,8 @@ class Game(pg.Surface):
         args = [size]
         if fullscreen:
             args.append(pg.FULLSCREEN | pg.HWSURFACE | pg.DOUBLEBUF)
-        else:
-            args.append(pg.HWSURFACE | pg.DOUBLEBUF)
+        # else:
+            # args.append(pg.HWSURFACE | pg.DOUBLEBUF)
 
         self._screen = pg.display.set_mode(*args)
         pg.display.set_caption("MEGA SNAKE.")
