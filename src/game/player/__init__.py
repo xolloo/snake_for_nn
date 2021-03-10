@@ -9,6 +9,9 @@ from PIL import Image
 import enum
 import pickle
 import io
+from datetime import datetime
+import cv2
+import socket
 
 
 class Direction(enum.IntEnum):
@@ -33,7 +36,7 @@ class Snake:
         elif self._path == Direction.LEFT:
             self._body = [(self._area[0] // 2 + i, self._area[1] // 2) for i in range(3)]
         self._counter = 0
-        self._max_steps = 5
+        self._max_steps = 200
 
     def __len__(self):
         return len(self._body)
@@ -115,7 +118,8 @@ class Snake:
 
 
 class Track(pg.Surface):
-    def __init__(self, *args, box=0, area=(0, 0), **kwargs):
+    def __init__(self, *args, box=0, area=(0, 0), save_video=False, **kwargs):
+        self.counter = 0
         super().__init__(*args, **kwargs)
         self._box = box
         self._area = np.asarray(area, dtype=np.uint16)
@@ -126,6 +130,9 @@ class Track(pg.Surface):
         self.add_food()
         self.drave_snake()
         self.drave_food()
+        # self.save_video = save_video
+        # if save_video:
+        self.images = []
 
     def drave_snake(self):
         self.fill(self.bg_color)
@@ -138,6 +145,11 @@ class Track(pg.Surface):
     def drave_food(self):
         food = list(np.asarray(self.food, dtype=np.uint16) * self._box + 1)
         pg.draw.rect(self, Color.RED, food + [self._box - 1, self._box - 1])
+
+    def get_img(self):
+        return np.fromstring(pg.image.tostring(self, "RGB"), dtype=np.uint8).reshape(
+            (self.get_height(), self.get_width(), 3)
+        )
 
     def update(self, direction=None):
         if direction is None:
@@ -157,8 +169,21 @@ class Track(pg.Surface):
             self.drave_food()
             if self.snake.chek_in(self.food):
                 self.add_food()
+            if self.counter % 100 == 0:
+                self.images.append(self.get_img())
         else:
             self.end_game = True
+            if self.counter % 100 == 0:
+                h, w = self.get_size()
+                now = datetime.now()
+                if not os.path.isdir("videos"):
+                    os.mkdir("videos")
+                file_name = now.strftime("%Y%m%d%H%M%S") + ".avi"
+                video = cv2.VideoWriter("videos/" + file_name, 0, 60, (h, w))
+                for img in self.images:
+                    video.write(img[::,::,::-1])
+                video.release()
+        self.counter += 1
 
     def add_food(self):
         self.food = (
@@ -192,24 +217,33 @@ class Track(pg.Surface):
 
 
 class Game(pg.Surface):
-    def __init__(self, size, fullscreen=False, box_size=20, fps=0, socket=None):
+    def __init__(
+        self,
+        size,
+        fullscreen=False,
+        box_size=20,
+        fps=0,
+        screen=False,
+    ):
         pg.mouse.set_visible(False)
         args = [size]
         if fullscreen:
             args.append(pg.FULLSCREEN | pg.HWSURFACE | pg.DOUBLEBUF)
         else:
             args.append(pg.HWSURFACE | pg.DOUBLEBUF)
-
-        self._screen = pg.display.set_mode(*args)
-        pg.display.set_caption("MEGA SNAKE.")
+        self._screen = screen
         super().__init__(size)
         self.fill(Color.GOLD)
         self._box_size = box_size
         self._area = (size[0] // self._box_size, size[1] // self._box_size)
-        self._track = Track(size, box=self._box_size, area=self._area)
+        self._track = Track(
+            size,
+            box=self._box_size,
+            area=self._area
+        )
         self._timer = pg.time.Clock()
         self._fps = fps
-        self._socket = socket
+        self._socket = socket.create_server(("127.0.0.1", 8989), reuse_port=True)
         self._client = None
         self._client, addr = self._socket.accept()
 
@@ -240,7 +274,6 @@ class Game(pg.Surface):
 
     def run(self):
         try:
-            result = None
             self.update(None)
             pg.display.flip()
             while not self._check_stop():
@@ -249,14 +282,11 @@ class Game(pg.Surface):
                 pg.display.flip()
                 if self._track.end_game:
                     self.send_info(self._track.get_state())
-                    result = False
-                    break
+                    return True
                 if self._client is None:
                     self._timer.tick(self._fps)
-
             else:
-                result = True
-            return result
+                return False
         except KeyboardInterrupt:
             return False
         finally:

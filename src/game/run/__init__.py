@@ -1,18 +1,25 @@
 import time
 import socket
 import pickle
-# import pygame
 import os
+import subprocess
+from threading import Thread
 from datetime import datetime, timedelta
 
 
-
 class Agent:
-    def __init__(self):
-        # self.pid = os.system(".venv/bin/python -m game.run")
-        # time.sleep(5)
-        self.client = socket.create_connection(("127.0.0.1", 8989))
+    def __init__(self, interpretator):
+        cmd = [interpretator, "-m", "game.run"]
+        self.worker = Thread(
+            target=subprocess.run, args=(cmd,)
+        )
         self.interval = datetime.now() + timedelta(milliseconds=3)
+        self.worker.start()
+        time.sleep(3)
+
+
+    def run(self):
+        self.client = socket.create_connection(("127.0.0.1", 8989))
 
     def step_to(self, direction):
         try:
@@ -20,21 +27,21 @@ class Agent:
         except Exception:
             return None
 
-
     def get_env(self):
         while self.interval > datetime.now():
-            time.sleep(0.001)
+            time.sleep(0.002)
         try:
             data = self.client.recv(2048 * 1000)
         except Exception as error:
-            print(error, "data")
             raise
         else:
             try:
                 return pickle.loads(data)
             except Exception as error:
-                print(error)
-                return None
+                data += self.client.recv(2048 * 1000)
+                try:
+                    return pickle.loads(data)
+                except Exception:
+                    return None
         finally:
             self.interval = datetime.now() + timedelta(milliseconds=2)
-        

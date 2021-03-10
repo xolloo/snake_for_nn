@@ -1,1 +1,4 @@
 pygame>=2.0.1
+tensorflow>=2.4.1
+Pillow>=8.1.1
+matplotlib>=3.3.4
